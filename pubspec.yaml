@@ -1,7 +1,7 @@
 name: cod
 description: "A fun app to play with your friend group"
 
-publish_to: "none" # Remove this line if you wish to publish to pub.dev
+publish_to: "none" # Remove this line to publish to pub.dev
 
 version: 1.0.0+1
 
@@ -11,11 +11,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_riverpod: ^2.5.1
+  image_picker: ^1.2.0
+  video_player: ^2.8.6
 
 dev_dependencies:
-  flutter_lints: ^5.0.0
   flutter_test:
     sdk: flutter
+  flutter_lints: ^5.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -23,7 +26,12 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   uses-material-design: true
-  # assets:
+  assets:
+    - assets/data/rounds.json
+    - assets/data/players.json
+    - assets/images/
+    - assets/images/players/
+    - assets/images/rounds/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -1,3 +1,9 @@
+# App-specific
+assets/data/
+assets/images/rounds
+assets/images/players
+assets/videos/rounds
+
 
 # FVM Version Cache
 .fvm/
