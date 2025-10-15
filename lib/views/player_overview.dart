@@ -1,16 +1,17 @@
 import 'package:cod/classes/player.dart';
-import 'package:cod/classes/player_manager.dart';
 import 'package:cod/theme/colors.dart';
 import 'package:cod/views/add_player.dart';
 import 'package:cod/views/game_round.dart';
+import 'package:cod/providers/player_providers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class PlayerOverviewScreen extends StatelessWidget {
+class PlayerOverviewScreen extends ConsumerWidget {
   const PlayerOverviewScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final manager = PlayerScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final manager = ref.watch(playerManagerProvider);
     final players = manager.players;
     final activeCount = manager.activePlayerCount;
 
@@ -21,10 +22,7 @@ class PlayerOverviewScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Players',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22),
-              ),
+              Text('Players', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22)),
               const SizedBox(height: 20),
               Expanded(
                 child: GridView.builder(
@@ -38,14 +36,12 @@ class PlayerOverviewScreen extends StatelessWidget {
                   itemCount: players.length + 1,
                   itemBuilder: (context, index) {
                     if (index == players.length) {
-                      return _AddPlayerCard(
-                        onTap: () => Navigator.of(context).pushNamed(AddPlayerScreen.routeName),
-                      );
+                      return _AddPlayerCard(onTap: () => Navigator.of(context).pushNamed(AddPlayerScreen.routeName));
                     }
                     final player = players[index];
                     return _PlayerCard(
                       player: player,
-                      onTap: () => manager.toggleActiveAt(index),
+                      onTap: () => ref.read(playerManagerProvider).toggleActiveAt(index),
                     );
                   },
                 ),
@@ -59,9 +55,7 @@ class PlayerOverviewScreen extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
           child: ElevatedButton(
-            onPressed: activeCount >= 2
-                ? () => Navigator.of(context).pushNamed(GameRoundBeforeScreen.routeName)
-                : null,
+            onPressed: activeCount >= 2 ? () => Navigator.of(context).pushNamed(GameRoundScreen.routeName) : null,
             child: Text(activeCount >= 2 ? 'Start Game' : 'Select at least 2 players'),
           ),
         ),
@@ -90,9 +84,7 @@ class _PlayerCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: borderColor, width: player.isActive ? 2 : 1),
           boxShadow: player.isActive
-              ? const [
-                  BoxShadow(color: Color(0x33FF5D68), blurRadius: 12, spreadRadius: 1),
-                ]
+              ? const [BoxShadow(color: Color(0x33FF5D68), blurRadius: 12, spreadRadius: 1)]
               : null,
         ),
         child: Column(
@@ -102,19 +94,24 @@ class _PlayerCard extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, box) {
                   final radius = box.biggest.shortestSide / 2;
-                  return CircleAvatar(radius: radius, backgroundImage: NetworkImage(player.photoUrl));
+                  return CircleAvatar(radius: radius, backgroundImage: _playerImage(player));
                 },
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              player.name,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-            ),
+            Text(player.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
           ],
         ),
       ),
     );
+  }
+
+  ImageProvider _playerImage(Player player) {
+    if (player.photoBytes != null && player.photoBytes!.isNotEmpty) {
+      return MemoryImage(player.photoBytes!);
+    }
+    final asset = player.photoAsset ?? Player.defaultAvatarAsset;
+    return AssetImage(asset);
   }
 }
 

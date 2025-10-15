@@ -1,39 +1,31 @@
+import 'dart:typed_data';
+
 import 'package:cod/classes/player.dart';
-import 'package:cod/classes/player_manager.dart';
+import 'package:cod/providers/player_providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cod/theme/colors.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
-class AddPlayerScreen extends StatefulWidget {
+class AddPlayerScreen extends ConsumerStatefulWidget {
   const AddPlayerScreen({super.key});
 
   static const routeName = '/players/add';
 
   @override
-  State<AddPlayerScreen> createState() => _AddPlayerScreenState();
+  ConsumerState<AddPlayerScreen> createState() => _AddPlayerScreenState();
 }
 
-class _AddPlayerScreenState extends State<AddPlayerScreen> {
+class _AddPlayerScreenState extends ConsumerState<AddPlayerScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
-  String? _selectedPhoto;
+  final ImagePicker _picker = ImagePicker();
+
+  Uint8List? _imageBytes;
   _PhotoSource? _selectedSource;
 
-  static const String _fallbackPhoto =
-      'https://images.unsplash.com/photo-1487412912498-0447578fcca8?auto=format&fit=crop&w=200&q=60';
-
-  static const List<String> _cameraSamples = [
-    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=200&q=60',
-    'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?auto=format&fit=crop&w=200&q=60',
-    'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=200&q=60',
-    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=200&q=60',
-  ];
-
-  static const List<String> _librarySamples = [
-    'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=200&q=60',
-    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=200&q=60',
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=60',
-    'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=200&q=60',
-  ];
+  bool get _canSave =>
+      _nameController.text.trim().isNotEmpty && _imageBytes != null && _imageBytes!.isNotEmpty;
 
   @override
   void initState() {
@@ -49,105 +41,124 @@ class _AddPlayerScreenState extends State<AddPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canSave = _nameController.text.trim().isNotEmpty;
-
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 12),
-                Text('Add Player', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Player name', hintText: 'Enter name'),
-                  textInputAction: TextInputAction.done,
-                  textCapitalization: TextCapitalization.words,
-                  autovalidateMode: AutovalidateMode.onUserInteraction,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Give your player a name';
-                    }
-                    return null;
-                  },
-                  onFieldSubmitted: (_) {
-                    if (canSave) {
-                      _savePlayer(context);
-                    }
-                  },
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Photo for player',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ImagePickerCard(
-                        icon: Icons.photo_camera_outlined,
-                        title: 'Use Camera',
-                        subtitle: 'Take a new photo',
-                        isSelected: _selectedSource == _PhotoSource.camera,
-                        onTap: () => _choosePhoto(context, _PhotoSource.camera),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _ImagePickerCard(
-                        icon: Icons.photo_library_outlined,
-                        title: 'Choose from Library',
-                        subtitle: 'Pick from camera roll',
-                        isSelected: _selectedSource == _PhotoSource.library,
-                        onTap: () => _choosePhoto(context, _PhotoSource.library),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Preview',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.surfaceBorder),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 12),
+                  Text('Add Player', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(labelText: 'Player name', hintText: 'Enter name'),
+                    textInputAction: TextInputAction.done,
+                    textCapitalization: TextCapitalization.words,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Give your player a name';
+                      }
+                      return null;
+                    },
+                    onFieldSubmitted: (_) {
+                      if (_canSave) {
+                        _savePlayer(context);
+                      }
+                    },
                   ),
-                  child: Row(
+                  const SizedBox(height: 24),
+                  Text(
+                    'Photo for player',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
                     children: [
-                      CircleAvatar(radius: 28, backgroundImage: NetworkImage(_selectedPhoto ?? _fallbackPhoto)),
+                      Expanded(
+                        child: _ImagePickerCard(
+                          icon: Icons.photo_camera_outlined,
+                          title: 'Use Camera',
+                          subtitle: 'Take a new photo',
+                          isSelected: _selectedSource == _PhotoSource.camera,
+                          onTap: () => _pickImage(ImageSource.camera, _PhotoSource.camera),
+                        ),
+                      ),
                       const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _nameController.text.trim().isEmpty ? 'New Player' : _nameController.text.trim(),
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _selectedPhoto == null
-                                ? 'Pick a photo to personalize this player'
-                                : 'Ready to join the fun',
-                            style: const TextStyle(color: Colors.white54),
-                          ),
-                        ],
+                      Expanded(
+                        child: _ImagePickerCard(
+                          icon: Icons.photo_library_outlined,
+                          title: 'Choose from Library',
+                          subtitle: 'Pick from camera roll',
+                          isSelected: _selectedSource == _PhotoSource.gallery,
+                          onTap: () => _pickImage(ImageSource.gallery, _PhotoSource.gallery),
+                        ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Preview',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.surfaceBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(radius: 28, backgroundImage: _previewImage()),
+                        const SizedBox(width: 16),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _nameController.text.trim().isEmpty ? 'New Player' : _nameController.text.trim(),
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _imageBytes == null ? 'Pick a photo to personalize this player' : 'Ready to join the fun',
+                              style: const TextStyle(color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 80),
+                ],
+              ),
+            ),
+          ),
+        ),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _canSave ? () => _savePlayer(context) : null,
+                    child: const Text('Save Player'),
                   ),
                 ),
               ],
@@ -155,48 +166,31 @@ class _AddPlayerScreenState extends State<AddPlayerScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: canSave ? () => _savePlayer(context) : null,
-                  child: const Text('Save Player'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
-  Future<void> _choosePhoto(BuildContext context, _PhotoSource source) async {
-    final samples = source == _PhotoSource.camera ? _cameraSamples : _librarySamples;
-    final title = source == _PhotoSource.camera ? 'Take a new photo' : 'Pick from camera roll';
-    final selection = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
-        return _PhotoPickerSheet(title: title, options: samples);
-      },
-    );
+  Future<void> _pickImage(ImageSource source, _PhotoSource tracker) async {
+    try {
+      final XFile? file = await _picker.pickImage(source: source, maxWidth: 600, imageQuality: 85);
+      if (file == null) {
+        return;
+      }
 
-    if (selection == null) {
-      return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _imageBytes = bytes;
+        _selectedSource = tracker;
+      });
+    } on Exception catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not pick image: ${error.toString()}')));
     }
-
-    setState(() {
-      _selectedPhoto = selection;
-      _selectedSource = source;
-    });
   }
 
   void _savePlayer(BuildContext context) {
@@ -204,9 +198,29 @@ class _AddPlayerScreenState extends State<AddPlayerScreen> {
       return;
     }
 
-    final manager = PlayerScope.of(context);
-    manager.addPlayer(Player(name: _nameController.text.trim(), photoUrl: _selectedPhoto ?? _fallbackPhoto));
+    final photoBytes = _imageBytes;
+    if (photoBytes == null || photoBytes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a photo to continue.')),
+      );
+      return;
+    }
+
+    final manager = ref.read(playerManagerProvider);
+    manager.addPlayer(
+      Player(
+        name: _nameController.text.trim(),
+        photoBytes: photoBytes,
+      ),
+    );
     Navigator.of(context).pop();
+  }
+
+  ImageProvider _previewImage() {
+    if (_imageBytes != null && _imageBytes!.isNotEmpty) {
+      return MemoryImage(_imageBytes!);
+    }
+    return const AssetImage(Player.defaultAvatarAsset);
   }
 }
 
@@ -259,54 +273,4 @@ class _ImagePickerCard extends StatelessWidget {
   }
 }
 
-class _PhotoPickerSheet extends StatelessWidget {
-  const _PhotoPickerSheet({required this.title, required this.options});
-
-  final String title;
-  final List<String> options;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 20)),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 220,
-              child: GridView.builder(
-                itemCount: options.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                ),
-                itemBuilder: (context, index) {
-                  final photo = options[index];
-                  return GestureDetector(
-                    onTap: () => Navigator.of(context).pop(photo),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.network(photo, fit: BoxFit.cover),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-enum _PhotoSource { camera, library }
+enum _PhotoSource { camera, gallery }

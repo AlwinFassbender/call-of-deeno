@@ -1,14 +1,18 @@
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:cod/classes/player.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class PlayerManager extends ChangeNotifier {
-  PlayerManager({List<Player>? initialPlayers}) {
-    _players.addAll(initialPlayers ?? _defaultPlayers);
+  PlayerManager() {
+    _loadDefaults();
   }
 
   final List<Player> _players = [];
+  final AssetBundle _bundle = rootBundle;
+  final String assetPath = 'assets/data/players.json';
 
   UnmodifiableListView<Player> get players => UnmodifiableListView(_players);
 
@@ -28,44 +32,19 @@ class PlayerManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  static final List<Player> _defaultPlayers = [
-    Player(
-      name: 'Ava',
-      isActive: true,
-      photoUrl:
-          'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=200&q=60',
-    ),
-    Player(
-      name: 'Mason',
-      isActive: true,
-      photoUrl:
-          'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=200&q=60',
-    ),
-    Player(
-      name: 'Luna',
-      photoUrl:
-          'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=200&q=60',
-    ),
-    Player(
-      name: 'Leo',
-      photoUrl:
-          'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?auto=format&fit=crop&w=200&q=60',
-    ),
-    Player(
-      name: 'Mia',
-      photoUrl:
-          'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=200&q=60',
-    ),
-  ];
-}
-
-class PlayerScope extends InheritedNotifier<PlayerManager> {
-  const PlayerScope({super.key, required PlayerManager manager, required super.child})
-      : super(notifier: manager);
-
-  static PlayerManager of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<PlayerScope>();
-    assert(scope != null, 'No PlayerScope found in context');
-    return scope!.notifier!;
+  Future<void> _loadDefaults() async {
+    final raw = await _bundle.loadString(assetPath);
+    final decoded = jsonDecode(raw);
+    final iterable = decoded is List ? decoded : (decoded is Map<String, dynamic> ? decoded['players'] : null);
+    if (iterable is List) {
+      final defaults = iterable.whereType<Map<String, dynamic>>().map(Player.fromJson).toList(growable: false);
+      if (defaults.isNotEmpty) {
+        _players
+          ..clear()
+          ..addAll(defaults);
+        notifyListeners();
+        return;
+      }
+    }
   }
 }
