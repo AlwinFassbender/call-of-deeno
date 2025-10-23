@@ -25,7 +25,10 @@ class _GameRoundScreenState extends ConsumerState<GameRoundScreen> {
       body: SafeArea(
         child: asyncState.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stackTrace) => _ErrorPlaceholder(onRetry: () => ref.refresh(roundViewModelProvider.future)),
+          error: (error, stackTrace) {
+            debugPrintStack(stackTrace: stackTrace);
+            return _ErrorPlaceholder();
+          },
           data: (state) => _RoundBody(state: state, notifier: notifier),
         ),
       ),
@@ -49,21 +52,19 @@ class _RoundBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final round = state.currentRound;
-    final player = state.currentPlayer;
+    final players = state.currentPlayers;
 
     if (state.availablePlayers.isEmpty) {
       return _CenteredMessage(
         title: 'No active players',
         subtitle: 'Select at least one active player to start a round.',
-        primaryAction: _MessageAction(label: 'Back to Players', onTap: () => Navigator.of(context).pop()),
       );
     }
 
-    if (round == null || player == null) {
+    if (round == null) {
       return _CenteredMessage(
         title: 'All rounds completed',
         subtitle: 'You have played through every available round.',
-        primaryAction: _MessageAction(label: 'Play Again', onTap: notifier.resetRounds),
       );
     }
 
@@ -79,41 +80,48 @@ class _RoundBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 12),
-          Text(
-            'Round $displayNumber',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 26),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              _PlayerChip(player: player),
-              const Spacer(),
-              _CategoryBadge(category: round.category),
-            ],
-          ),
-          const SizedBox(height: 18),
+          Text('Runde $displayNumber', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
+
           Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 350),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              transitionBuilder: (child, animation) {
-                final offsetAnimation = Tween<Offset>(
-                  begin: const Offset(0.05, 0.04),
-                  end: Offset.zero,
-                ).animate(animation);
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(position: offsetAnimation, child: child),
-                );
-              },
-              child: _RoundCard(
-                key: ValueKey('${round.id}-${state.roundOutcome?.name ?? 'task'}'),
-                child: state.roundOutcome == null
-                    ? _TaskContent(round: round)
-                    : _ResultContent(round: round, outcome: state.roundOutcome!),
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: round.needsPlayers && players.isNotEmpty
+                            ? _PlayerGroup(players: players, highlightDuel: round.category == RoundCategory.duel)
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, animation) {
+                    final offsetAnimation = Tween<Offset>(
+                      begin: const Offset(0.05, 0.04),
+                      end: Offset.zero,
+                    ).animate(animation);
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(position: offsetAnimation, child: child),
+                    );
+                  },
+                  child: _RoundCard(
+                    key: ValueKey('${round.id}-${state.roundOutcome?.name ?? 'task'}'),
+                    child: state.roundOutcome == null
+                        ? _TaskContent(round: round)
+                        : _ResultContent(round: round, outcome: state.roundOutcome!),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -212,11 +220,11 @@ class _TaskContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(round.title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22)),
+          Text(round.title, style: Theme.of(context).textTheme.headlineLarge),
           const SizedBox(height: 12),
-          Text(round.taskDescription, style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.4)),
+          Text(round.taskDescription, style: const TextStyle(color: Colors.white70)),
           const SizedBox(height: 16),
           if (round.taskVideoPath != null || round.taskPhotoPath != null)
             _RoundMedia(videoPath: round.taskVideoPath, photoPath: round.taskPhotoPath),
@@ -303,7 +311,7 @@ class _PlayerChip extends StatelessWidget {
       children: [
         CircleAvatar(radius: 18, backgroundImage: _playerImage(player)),
         const SizedBox(width: 12),
-        Text('${player.name}\'s turn', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+        Text(player.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
       ],
     );
   }
@@ -319,21 +327,56 @@ class _PlayerChip extends StatelessWidget {
   }
 }
 
-class _CategoryBadge extends StatelessWidget {
-  const _CategoryBadge({required this.category});
+class _PlayerGroup extends StatelessWidget {
+  const _PlayerGroup({required this.players, this.highlightDuel = false});
 
-  final RoundCategory category;
+  final List<Player> players;
+  final bool highlightDuel;
 
   @override
   Widget build(BuildContext context) {
+    if (players.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    if (players.length == 1) {
+      return _PlayerChip(player: players.first);
+    }
+
+    final displayed = players.take(2).toList(growable: false);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PlayerChip(player: displayed.first),
+        const SizedBox(width: 12),
+        _VsBadge(highlight: highlightDuel),
+        const SizedBox(width: 12),
+        _PlayerChip(player: displayed.last),
+      ],
+    );
+  }
+}
+
+class _VsBadge extends StatelessWidget {
+  const _VsBadge({required this.highlight});
+
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlight ? const Color(0xFFFF6C7A) : Colors.white70;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.surfaceBorder),
+        color: highlight ? const Color(0xFF331820) : AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Text(category.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+      child: Text(
+        "vs",
+        style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 14, fontFamily: "BBHSansBartle"),
+      ),
     );
   }
 }
@@ -394,34 +437,59 @@ class _RoundMedia extends StatefulWidget {
 class _RoundMediaState extends State<_RoundMedia> {
   VideoPlayerController? _controller;
   Future<void>? _initialiseController;
+  double? _mediaAspectRatio;
+  ImageStream? _imageStream;
+  ImageStreamListener? _imageStreamListener;
+  VoidCallback? _videoControllerListener;
+
+  static const double _fallbackAspectRatio = 16 / 9;
 
   @override
   void initState() {
     super.initState();
     _prepareController();
+    _resolveImageAspectRatio();
   }
 
   @override
   void didUpdateWidget(covariant _RoundMedia oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoPath != widget.videoPath) {
+    final videoPathChanged = oldWidget.videoPath != widget.videoPath;
+    final photoPathChanged = oldWidget.photoPath != widget.photoPath;
+
+    if (videoPathChanged) {
       _disposeController();
       _prepareController();
+      if (widget.videoPath == null && widget.photoPath != null) {
+        _clearImageStream();
+        _resolveImageAspectRatio();
+      }
+    }
+    if (photoPathChanged) {
+      _clearImageStream();
+      _resolveImageAspectRatio();
+    }
+    if (widget.videoPath == null && widget.photoPath == null) {
+      _updateAspectRatio(null);
     }
   }
 
   @override
   void dispose() {
+    _clearImageStream();
     _disposeController();
     super.dispose();
   }
 
   void _prepareController() {
     if (widget.videoPath == null) {
+      _updateAspectRatio(null);
       return;
     }
     final controller = VideoPlayerController.asset(widget.videoPath!);
     _controller = controller;
+    _videoControllerListener = _handleVideoValueChange;
+    controller.addListener(_videoControllerListener!);
     _initialiseController = controller
         .initialize()
         .then((_) {
@@ -429,6 +497,7 @@ class _RoundMediaState extends State<_RoundMedia> {
             ..setLooping(true)
             ..setVolume(0)
             ..play();
+          _updateAspectRatio(controller.value.aspectRatio);
           if (mounted) {
             setState(() {});
           }
@@ -439,16 +508,89 @@ class _RoundMediaState extends State<_RoundMedia> {
   }
 
   void _disposeController() {
-    _controller?.dispose();
+    final controller = _controller;
+    if (controller != null && _videoControllerListener != null) {
+      controller.removeListener(_videoControllerListener!);
+    }
+    _videoControllerListener = null;
+    controller?.dispose();
     _controller = null;
     _initialiseController = null;
   }
 
+  void _handleVideoValueChange() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    _updateAspectRatio(controller.value.aspectRatio);
+  }
+
+  void _resolveImageAspectRatio() {
+    if (widget.photoPath == null) {
+      return;
+    }
+
+    final imageProvider = AssetImage(widget.photoPath!);
+    final stream = imageProvider.resolve(const ImageConfiguration());
+    final listener = ImageStreamListener((imageInfo, _) {
+      final width = imageInfo.image.width;
+      final height = imageInfo.image.height;
+      if (height != 0) {
+        _updateAspectRatio(width / height);
+      }
+      _clearImageStream();
+    }, onError: (error, stackTrace) {
+      debugPrint('Failed to load image: $error');
+      _clearImageStream();
+    });
+
+    _imageStream = stream;
+    _imageStreamListener = listener;
+    stream.addListener(listener);
+  }
+
+  void _clearImageStream() {
+    if (_imageStream != null && _imageStreamListener != null) {
+      _imageStream!.removeListener(_imageStreamListener!);
+    }
+    _imageStream = null;
+    _imageStreamListener = null;
+  }
+
+  void _updateAspectRatio(double? ratio) {
+    if (ratio == null || ratio <= 0 || ratio.isNaN) {
+      if (_mediaAspectRatio != null) {
+        setState(() {
+          _mediaAspectRatio = null;
+        });
+      }
+      return;
+    }
+    if (_mediaAspectRatio == ratio) {
+      return;
+    }
+    if (!mounted) {
+      _mediaAspectRatio = ratio;
+      return;
+    }
+    setState(() {
+      _mediaAspectRatio = ratio;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: AspectRatio(aspectRatio: 16 / 9, child: _buildMediaContent(context)),
+    final aspectRatio = (_mediaAspectRatio != null && _mediaAspectRatio! > 0)
+        ? _mediaAspectRatio!
+        : _fallbackAspectRatio;
+
+    return SizedBox(
+      width: double.infinity,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: AspectRatio(aspectRatio: aspectRatio, child: _buildMediaContent(context)),
+      ),
     );
   }
 
@@ -472,7 +614,10 @@ class _RoundMediaState extends State<_RoundMedia> {
       return Image.asset(
         widget.photoPath!,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => const _MediaPlaceholder(icon: Icons.image_not_supported),
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint("Image not found: $error");
+          return const _MediaPlaceholder(icon: Icons.image_not_supported);
+        },
       );
     }
 
@@ -495,54 +640,43 @@ class _MediaPlaceholder extends StatelessWidget {
 }
 
 class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({required this.title, required this.subtitle, this.primaryAction});
+  const _CenteredMessage({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
-  final _MessageAction? primaryAction;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(32),
-      child: Column(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white70),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.white70),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
-          if (primaryAction != null) ...[
-            const SizedBox(height: 24),
-            ElevatedButton(onPressed: primaryAction!.onTap, child: Text(primaryAction!.label)),
-          ],
         ],
       ),
     );
   }
 }
 
-class _MessageAction {
-  const _MessageAction({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-}
-
 class _ErrorPlaceholder extends StatelessWidget {
-  const _ErrorPlaceholder({required this.onRetry});
-
-  final VoidCallback onRetry;
+  const _ErrorPlaceholder();
 
   @override
   Widget build(BuildContext context) {
-    return _CenteredMessage(
-      title: 'We hit a snag',
-      subtitle: 'Something went wrong while loading the round data.',
-      primaryAction: _MessageAction(label: 'Try again', onTap: onRetry),
-    );
+    return _CenteredMessage(title: 'We hit a snag', subtitle: 'Something went wrong while loading the round data.');
   }
 }

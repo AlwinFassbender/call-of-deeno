@@ -22,7 +22,7 @@ class PlayerOverviewScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Players', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22)),
+              Text('Players', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 20),
               Expanded(
                 child: GridView.builder(
@@ -46,13 +46,13 @@ class PlayerOverviewScreen extends ConsumerWidget {
                   },
                 ),
               ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
       bottomNavigationBar: SafeArea(
-        child: Padding(
+        child: Container(
+          color: Colors.transparent,
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
           child: ElevatedButton(
             onPressed: activeCount >= 2 ? () => Navigator.of(context).pushNamed(GameRoundScreen.routeName) : null,
@@ -73,16 +73,19 @@ class _PlayerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final borderColor = player.isActive ? AppColors.primary : AppColors.surfaceBorder;
-    return InkWell(
-      borderRadius: BorderRadius.circular(22),
+    return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: borderColor, width: player.isActive ? 2 : 1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: borderColor,
+            width: player.isActive ? 2 : 1,
+            strokeAlign: BorderSide.strokeAlignInside,
+          ),
           boxShadow: player.isActive
               ? const [BoxShadow(color: Color(0x33FF5D68), blurRadius: 12, spreadRadius: 1)]
               : null,
@@ -122,8 +125,7 @@ class _AddPlayerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(22),
+    return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(

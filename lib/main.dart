@@ -67,7 +67,11 @@ class CallOfDeeno extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 18),
           ),
         ),
-        textTheme: const TextTheme(),
+        textTheme: const TextTheme(
+          titleLarge: TextStyle(fontSize: 32),
+          headlineLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          bodyMedium: TextStyle(fontSize: 20),
+        ),
       ),
       onGenerateRoute: _onGenerateRoute,
       home: const PlayerOverviewScreen(),

@@ -20,27 +20,21 @@ class RoundSessionState {
     required this.categoryCompletionCounts,
     required this.playerSelectionCounts,
     required this.availablePlayers,
+    required this.currentPlayers,
     this.currentRound,
-    this.currentPlayer,
     this.roundOutcome,
   });
 
-  factory RoundSessionState.initial({
-    required List<Round> rounds,
-    required List<Player> players,
-  }) {
-    final categoryCounts = <RoundCategory, int>{
-      for (final round in rounds) round.category: 0,
-    };
-    final playerCounts = <String, int>{
-      for (final player in players) player.name: 0,
-    };
+  factory RoundSessionState.initial({required List<Round> rounds, required List<Player> players}) {
+    final categoryCounts = <RoundCategory, int>{for (final round in rounds) round.category: 0};
+    final playerCounts = <String, int>{for (final player in players) player.name: 0};
     return RoundSessionState(
       rounds: rounds,
       completedRoundIds: <String>{},
       categoryCompletionCounts: categoryCounts,
       playerSelectionCounts: playerCounts,
       availablePlayers: players,
+      currentPlayers: const [],
     );
   }
 
@@ -50,7 +44,7 @@ class RoundSessionState {
   final Map<String, int> playerSelectionCounts;
   final List<Player> availablePlayers;
   final Round? currentRound;
-  final Player? currentPlayer;
+  final List<Player> currentPlayers;
   final RoundOutcome? roundOutcome;
 
   bool get showRewardCard => roundOutcome == RoundOutcome.completed && currentRound?.rewardDescription != null;
@@ -70,8 +64,7 @@ class RoundSessionState {
     List<Player>? availablePlayers,
     Round? currentRound,
     bool setCurrentRound = false,
-    Player? currentPlayer,
-    bool setCurrentPlayer = false,
+    List<Player>? currentPlayers,
     RoundOutcome? roundOutcome,
     bool clearOutcome = false,
   }) {
@@ -82,7 +75,7 @@ class RoundSessionState {
       playerSelectionCounts: playerSelectionCounts ?? this.playerSelectionCounts,
       availablePlayers: availablePlayers ?? this.availablePlayers,
       currentRound: setCurrentRound ? currentRound : this.currentRound,
-      currentPlayer: setCurrentPlayer ? currentPlayer : this.currentPlayer,
+      currentPlayers: currentPlayers ?? this.currentPlayers,
       roundOutcome: clearOutcome ? null : (roundOutcome ?? this.roundOutcome),
     );
   }
@@ -171,7 +164,8 @@ class RoundViewModel extends AsyncNotifier<RoundSessionState> {
     }
 
     if (current.roundOutcome == RoundOutcome.failed && round.category.persistsUntilSuccess) {
-      final updated = _assignPlayer(current.copyWith(clearOutcome: true), round, incrementPlayerCount: true);
+      var updated = current.copyWith(clearOutcome: true, currentPlayers: const []);
+      updated = _assignPlayers(updated, round, incrementPlayerCount: true);
       state = AsyncData(updated);
       return;
     }
@@ -186,10 +180,7 @@ class RoundViewModel extends AsyncNotifier<RoundSessionState> {
       return;
     }
 
-    var resetState = RoundSessionState.initial(
-      rounds: current.rounds,
-      players: current.availablePlayers,
-    );
+    var resetState = RoundSessionState.initial(rounds: current.rounds, players: current.availablePlayers);
 
     if (resetState.rounds.isEmpty || resetState.availablePlayers.isEmpty) {
       state = AsyncData(resetState);
@@ -215,16 +206,21 @@ class RoundViewModel extends AsyncNotifier<RoundSessionState> {
       counts.putIfAbsent(player.name, () => 0);
     }
 
-    var nextState = current.copyWith(
-      availablePlayers: players,
-      playerSelectionCounts: counts,
-    );
+    var nextState = current.copyWith(availablePlayers: players, playerSelectionCounts: counts);
 
-    if (players.isEmpty) {
-      nextState = nextState.copyWith(currentPlayer: null, setCurrentPlayer: true);
-    } else if (nextState.currentPlayer == null || !players.contains(nextState.currentPlayer)) {
-      if (nextState.currentRound != null) {
-        nextState = _assignPlayer(nextState, nextState.currentRound!, incrementPlayerCount: false);
+    if (nextState.currentRound == null || !nextState.currentRound!.needsPlayers) {
+      if (nextState.currentPlayers.isNotEmpty) {
+        nextState = nextState.copyWith(currentPlayers: const []);
+      }
+    } else if (players.isEmpty) {
+      nextState = nextState.copyWith(currentPlayers: const []);
+    } else {
+      final round = nextState.currentRound!;
+      final hasAllPlayers =
+          nextState.currentPlayers.length == round.requiredPlayerCount &&
+          nextState.currentPlayers.every(players.contains);
+      if (!hasAllPlayers) {
+        nextState = _assignPlayers(nextState, round, incrementPlayerCount: false);
       }
     }
 
@@ -236,31 +232,17 @@ class RoundViewModel extends AsyncNotifier<RoundSessionState> {
       return state;
     }
 
-    final availablePlayers = state.availablePlayers;
-    if (availablePlayers.isEmpty) {
-      return state.copyWith(
-        currentRound: null,
-        setCurrentRound: true,
-        currentPlayer: null,
-        setCurrentPlayer: true,
-      );
-    }
-
     final nextRound = _pickRound(state, ignoreCompleted: ignoreCompleted);
     if (nextRound == null) {
-      return state.copyWith(
-        currentRound: null,
-        setCurrentRound: true,
-        currentPlayer: null,
-        setCurrentPlayer: true,
-      );
+      return state.copyWith(currentRound: null, setCurrentRound: true, currentPlayers: const []);
     }
 
-    final updatedState = _assignPlayer(
-      state.copyWith(currentRound: nextRound, setCurrentRound: true),
-      nextRound,
-      incrementPlayerCount: true,
-    );
+    var updatedState = state.copyWith(currentRound: nextRound, setCurrentRound: true, currentPlayers: const []);
+
+    if (nextRound.needsPlayers && state.availablePlayers.isNotEmpty) {
+      updatedState = _assignPlayers(updatedState, nextRound, incrementPlayerCount: true);
+    }
+
     return updatedState;
   }
 
@@ -277,61 +259,73 @@ class RoundViewModel extends AsyncNotifier<RoundSessionState> {
     }
 
     final categoryCounts = state.categoryCompletionCounts;
-    final minUsage = available
-        .map((round) => categoryCounts[round.category] ?? 0)
-        .reduce(min);
+    final minUsage = available.map((round) => categoryCounts[round.category] ?? 0).reduce(min);
 
-    final candidates = available
-        .where((round) => (categoryCounts[round.category] ?? 0) == minUsage)
-        .toList();
+    final candidates = available.where((round) => (categoryCounts[round.category] ?? 0) == minUsage).toList();
 
     return candidates[_random.nextInt(candidates.length)];
   }
 
-  RoundSessionState _assignPlayer(
-    RoundSessionState state,
-    Round round, {
-    required bool incrementPlayerCount,
-  }) {
-    if (state.availablePlayers.isEmpty) {
-      return state.copyWith(currentPlayer: null, setCurrentPlayer: true);
+  RoundSessionState _assignPlayers(RoundSessionState state, Round round, {required bool incrementPlayerCount}) {
+    final available = state.availablePlayers;
+    if (available.isEmpty || !round.needsPlayers) {
+      return state.copyWith(currentPlayers: const []);
     }
 
-    Player chosen;
-    if (round.playerId != null) {
-      final match = state.availablePlayers.firstWhere(
-        (player) => player.name.toLowerCase() == round.playerId!.toLowerCase(),
-        orElse: () => _chooseLeastSelectedPlayer(state),
-      );
-      chosen = match;
-    } else {
-      chosen = _chooseLeastSelectedPlayer(state);
+    final requiredCount = round.requiredPlayerCount;
+    final selected = <Player>[];
+    final usedNames = <String>{};
+
+    if (round.playerIds.isNotEmpty) {
+      for (final id in round.playerIds) {
+        if (selected.length >= requiredCount) {
+          break;
+        }
+        final match = _findPlayerByName(available, id);
+        if (match != null && usedNames.add(match.name)) {
+          selected.add(match);
+        }
+      }
+    }
+
+    while (selected.length < requiredCount) {
+      final candidate = _chooseLeastSelectedPlayer(state, exclude: usedNames);
+      if (candidate == null) {
+        break;
+      }
+      usedNames.add(candidate.name);
+      selected.add(candidate);
     }
 
     final counts = {...state.playerSelectionCounts};
     if (incrementPlayerCount) {
-      counts[chosen.name] = (counts[chosen.name] ?? 0) + 1;
+      for (final player in selected) {
+        counts[player.name] = (counts[player.name] ?? 0) + 1;
+      }
     }
 
-    return state.copyWith(
-      currentPlayer: chosen,
-      setCurrentPlayer: true,
-      playerSelectionCounts: counts,
-    );
+    return state.copyWith(currentPlayers: selected, playerSelectionCounts: counts);
   }
 
-  Player _chooseLeastSelectedPlayer(RoundSessionState state) {
-    final players = state.availablePlayers;
+  Player? _chooseLeastSelectedPlayer(RoundSessionState state, {Set<String>? exclude}) {
+    final excluded = exclude ?? <String>{};
+    final players = state.availablePlayers.where((player) => !excluded.contains(player.name)).toList(growable: false);
     if (players.isEmpty) {
-      throw StateError('No players available');
+      return null;
     }
     final counts = state.playerSelectionCounts;
-    final minUsage = players
-        .map((player) => counts[player.name] ?? 0)
-        .reduce(min);
-    final candidates = players
-        .where((player) => (counts[player.name] ?? 0) == minUsage)
-        .toList();
+    final minUsage = players.map((player) => counts[player.name] ?? 0).reduce(min);
+    final candidates = players.where((player) => (counts[player.name] ?? 0) == minUsage).toList();
     return candidates[_random.nextInt(candidates.length)];
+  }
+
+  Player? _findPlayerByName(List<Player> players, String id) {
+    final target = id.toLowerCase();
+    for (final player in players) {
+      if (player.name.toLowerCase() == target) {
+        return player;
+      }
+    }
+    return null;
   }
 }

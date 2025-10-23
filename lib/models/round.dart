@@ -2,32 +2,53 @@ import 'dart:convert';
 
 /// Different categories of rounds to help diversify gameplay.
 enum RoundCategory {
-  warmup,
-  challenge,
-  story,
-  skill,
-  wildcard;
+  /// Self explanatory
+  neverHaveIEver,
+
+  /// Vote one person of the group
+  vote,
+
+  /// The group decides which of the options is best
+  groupDecision,
+
+  /// Each person has to name something from that category
+  categories,
+
+  /// Each person fulfilling that criterion
+  criteria,
+
+  /// Someone has to take a guess
+  guess,
+
+  /// Two people battle it out
+  duel,
+
+  /// Other
+  other;
 
   factory RoundCategory.fromJson(String value) {
     return RoundCategory.values.firstWhere(
       (category) => category.name.toLowerCase() == value.toLowerCase(),
-      orElse: () => RoundCategory.wildcard,
+      orElse: () => RoundCategory.other,
     );
   }
 
-  String get label => switch (this) {
-    RoundCategory.warmup => 'Warm-up',
-    RoundCategory.challenge => 'Challenge',
-    RoundCategory.story => 'Story',
-    RoundCategory.skill => 'Skill Check',
-    RoundCategory.wildcard => 'Wildcard',
-  };
-
   /// Categories that keep the same task until a player completes it.
   bool get persistsUntilSuccess => switch (this) {
-    RoundCategory.challenge || RoundCategory.skill => true,
+    RoundCategory.guess => true,
     _ => false,
   };
+
+  String get label => switch (this) {
+        RoundCategory.neverHaveIEver => 'Never Have I Ever',
+        RoundCategory.vote => 'Vote',
+        RoundCategory.groupDecision => 'Group Decision',
+        RoundCategory.categories => 'Categories',
+        RoundCategory.criteria => 'Criteria',
+        RoundCategory.guess => 'Guess',
+        RoundCategory.duel => 'Duel',
+        RoundCategory.other => 'Wildcard',
+      };
 }
 
 class Round {
@@ -42,10 +63,20 @@ class Round {
     this.taskPhotoPath,
     this.rewardVideoPath,
     this.rewardPhotoPath,
-    this.playerId,
-  });
+    List<String>? playerIds,
+  }) : playerIds = playerIds ?? const [];
 
   factory Round.fromJson(Map<String, dynamic> json) {
+    final dynamic rawPlayerIds = json['playerIds'] ?? json['playerId'];
+    final List<String> parsedPlayerIds;
+    if (rawPlayerIds is List) {
+      parsedPlayerIds = rawPlayerIds.whereType<String>().toList();
+    } else if (rawPlayerIds is String) {
+      parsedPlayerIds = [rawPlayerIds];
+    } else {
+      parsedPlayerIds = const [];
+    }
+
     return Round(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -57,7 +88,7 @@ class Round {
       taskPhotoPath: json['taskPhotoPath'] as String?,
       rewardVideoPath: json['rewardVideoPath'] as String?,
       rewardPhotoPath: json['rewardPhotoPath'] as String?,
-      playerId: json['playerId'] as String?,
+      playerIds: parsedPlayerIds,
     );
   }
 
@@ -71,7 +102,15 @@ class Round {
   final String? taskPhotoPath;
   final String? rewardVideoPath;
   final String? rewardPhotoPath;
-  final String? playerId;
+  final List<String> playerIds;
+
+  bool get needsPlayers => requiredPlayerCount > 0;
+
+  int get requiredPlayerCount => switch (category) {
+        RoundCategory.guess => 1,
+        RoundCategory.duel => 2,
+        _ => 0,
+      };
 
   Map<String, dynamic> toJson() {
     return {
@@ -85,7 +124,7 @@ class Round {
       'taskPhotoPath': taskPhotoPath,
       'rewardVideoPath': rewardVideoPath,
       'rewardPhotoPath': rewardPhotoPath,
-      'playerId': playerId,
+      'playerIds': playerIds,
     };
   }
 }
