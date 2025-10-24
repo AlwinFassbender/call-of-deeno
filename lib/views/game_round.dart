@@ -2,6 +2,7 @@ import 'package:cod/classes/player.dart';
 import 'package:cod/models/round.dart';
 import 'package:cod/theme/colors.dart';
 import 'package:cod/viewmodels/game_round_view_model.dart';
+import 'package:cod/viewmodels/round_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
@@ -25,10 +26,7 @@ class _GameRoundScreenState extends ConsumerState<GameRoundScreen> {
       body: SafeArea(
         child: asyncState.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stackTrace) {
-            debugPrintStack(stackTrace: stackTrace);
-            return _ErrorPlaceholder();
-          },
+          error: (error, stackTrace) => _ErrorPlaceholder(),
           data: (state) => _RoundBody(state: state, notifier: notifier),
         ),
       ),
@@ -68,11 +66,7 @@ class _RoundBody extends StatelessWidget {
       );
     }
 
-    final completedCount = state.completedRoundIds.length;
-    final outcomeCountsAsCompleted =
-        state.roundOutcome == RoundOutcome.completed ||
-        (state.roundOutcome == RoundOutcome.failed && !round.category.persistsUntilSuccess);
-    final displayNumber = outcomeCountsAsCompleted ? completedCount : completedCount + 1;
+    final displayNumber = state.roundOutcome == null ? state.totalRoundsServed + 1 : state.totalRoundsServed;
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -533,17 +527,20 @@ class _RoundMediaState extends State<_RoundMedia> {
 
     final imageProvider = AssetImage(widget.photoPath!);
     final stream = imageProvider.resolve(const ImageConfiguration());
-    final listener = ImageStreamListener((imageInfo, _) {
-      final width = imageInfo.image.width;
-      final height = imageInfo.image.height;
-      if (height != 0) {
-        _updateAspectRatio(width / height);
-      }
-      _clearImageStream();
-    }, onError: (error, stackTrace) {
-      debugPrint('Failed to load image: $error');
-      _clearImageStream();
-    });
+    final listener = ImageStreamListener(
+      (imageInfo, _) {
+        final width = imageInfo.image.width;
+        final height = imageInfo.image.height;
+        if (height != 0) {
+          _updateAspectRatio(width / height);
+        }
+        _clearImageStream();
+      },
+      onError: (error, stackTrace) {
+        debugPrint('Failed to load image: $error');
+        _clearImageStream();
+      },
+    );
 
     _imageStream = stream;
     _imageStreamListener = listener;

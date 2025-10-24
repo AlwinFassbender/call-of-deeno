@@ -1,13 +1,46 @@
 import 'package:cod/classes/player.dart';
+import 'package:cod/providers/player_providers.dart';
+import 'package:cod/simulation/round_simulation.dart';
 import 'package:cod/theme/colors.dart';
+import 'package:cod/viewmodels/game_round_view_model.dart';
 import 'package:cod/views/add_player.dart';
 import 'package:cod/views/game_round.dart';
-import 'package:cod/providers/player_providers.dart';
+import 'package:cod/views/round_simulation_debug.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class PlayerOverviewScreen extends ConsumerWidget {
   const PlayerOverviewScreen({super.key});
+
+  Future<void> _simulateRounds(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final rounds = await ref.read(roundsProvider.future);
+      final manager = ref.read(playerManagerProvider);
+      final activePlayers = manager.players.where((player) => player.isActive).toList(growable: false);
+
+      if (activePlayers.isEmpty) {
+        messenger.showSnackBar(const SnackBar(content: Text('Activate at least one player to simulate.')));
+        return;
+      }
+      if (rounds.isEmpty) {
+        messenger.showSnackBar(const SnackBar(content: Text('No rounds available to simulate.')));
+        return;
+      }
+
+      final entries = simulateRounds(rounds: rounds, players: activePlayers, seed: 42);
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => RoundSimulationDebugScreen(entries: entries),
+        ),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not run simulation: ${error.toString()}')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,12 +84,25 @@ class PlayerOverviewScreen extends ConsumerWidget {
         ),
       ),
       bottomNavigationBar: SafeArea(
-        child: Container(
-          color: Colors.transparent,
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          child: ElevatedButton(
-            onPressed: activeCount >= 2 ? () => Navigator.of(context).pushNamed(GameRoundScreen.routeName) : null,
-            child: Text(activeCount >= 2 ? 'Start Game' : 'Select at least 2 players'),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed:
+                      activeCount >= 2 ? () => Navigator.of(context).pushNamed(GameRoundScreen.routeName) : null,
+                  child: Text(activeCount >= 2 ? 'Start Game' : 'Select at least 2 players'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: activeCount >= 1 ? () => _simulateRounds(context, ref) : null,
+                  child: const Text('Simulate Order'),
+                ),
+              ),
+            ],
           ),
         ),
       ),
